@@ -1,9 +1,9 @@
 import os
 import json
 import sys
-from typing import Any
+from typing import Any, Dict
 
-from iot_controller import IoTController
+from iot_controller import IoTController, build_frame
 
 # Load environment from multiple common files if available
 try:
@@ -17,7 +17,6 @@ except Exception:
 
 BASE_DIR = os.path.dirname(__file__)
 DEVICES_FILE = os.path.join(BASE_DIR, "devices.json")
-ACTIONS_FILE = os.path.join(BASE_DIR, "actions.json")
 
 
 def load_json(path: str) -> Any:
@@ -40,28 +39,58 @@ def pick(options: list[str], prompt: str) -> int:
 		print("Ngoài phạm vi, thử lại.")
 
 
-def resolve_com(env_key: str | None, default_com: str | None) -> str:
-	if env_key:
-		val = os.getenv(env_key)
-		if val:
-			return val
+def to_env_key_from_name(name: str) -> str:
+	key = ''.join(ch if ch.isalnum() else '_' for ch in name).upper()
+	return key
+
+
+def parse_devices_env() -> Dict[str, str]:
+	"""Parse DEVICES env like: "Cup-Dropping Machine:COM10;Other:COM3"""
+	result: Dict[str, str] = {}
+	val = os.getenv("DEVICES")
+	if not val:
+		return result
+	pairs = [p.strip() for p in val.replace(',', ';').split(';') if p.strip()]
+	for pair in pairs:
+		if ':' in pair:
+			name, com = pair.split(':', 1)
+			result[name.strip()] = com.strip()
+	return result
+
+
+def resolve_com(default_com: str | None, device_name: str | None) -> str:
+	devices_map = parse_devices_env()
+	if device_name and device_name in devices_map:
+		return devices_map[device_name]
 	return default_com or "COM1"
 
 
-def get_action_hex(actions_map: dict, action_id: str, env_prefix: str | None) -> str | None:
-	# Highest priority: env override, e.g. CUP_DROPPER_DISPENSE_ONE
-	if env_prefix:
-		env_key = f"{env_prefix}{action_id}".upper()
-		val = os.getenv(env_key)
-		if val:
-			return val
-	# Then from actions.json
-	if action_id in actions_map:
-		return actions_map[action_id]
-	for _, group in actions_map.items():
-		if isinstance(group, dict) and action_id in group:
-			return group[action_id]
-	return None
+def get_commands_for_device(device_name: str, fallback_actions: list[dict] | None) -> Dict[str, dict]:
+	commands_key = f"{to_env_key_from_name(device_name)}_COMMANDS"
+	commands_json = os.getenv(commands_key)
+	if commands_json:
+		try:
+			data = json.loads(commands_json)
+			if isinstance(data, dict):
+				return data
+		except Exception:
+			pass
+	# Fallback: derive from devices.json actions list as labels only (no building info)
+	cmds: Dict[str, dict] = {}
+	if fallback_actions:
+		for a in fallback_actions:
+			aid = a.get("id")
+			if aid:
+				cmds[aid] = {"label": a.get("label", aid)}
+	return cmds
+
+
+def build_frame_from_command(command: dict) -> bytes:
+	cc = int(command.get("command_code"), 0)
+	ic = int(command.get("instruction_code"), 0)
+	data_list = command.get("data_bytes") or []
+	data_bytes = bytes(data_list)
+	return build_frame(cc, ic, data_bytes)
 
 
 def main() -> int:
@@ -74,24 +103,31 @@ def main() -> int:
 	di = pick(device_names, "Chọn thiết bị:")
 	device = devices[di]
 
-	actions_map = load_json(ACTIONS_FILE)
-	actions = device.get("actions", [])
-	action_labels = [a.get("label", a.get("id", "unknown")) for a in actions]
-	ai = pick(action_labels, f"Thiết bị: {device_names[di]} - Chọn lệnh:")
-	action_id = actions[ai].get("id")
-	if not action_id:
-		print("Action không hợp lệ")
-		return 2
-
-	# resolve COM and baud
-	port = resolve_com(device.get("env_com"), device.get("default_com"))
+	device_name = device.get("name", device.get("id"))
+	port = resolve_com(device.get("default_com"), device_name)
 	baud = int(device.get("baud", 115200))
-	env_prefix = device.get("env_prefix")
 
-	hex_str = get_action_hex(actions_map, action_id, env_prefix)
-	if not hex_str:
-		print(f"Không tìm thấy mã hex cho action: {action_id}")
+	commands = get_commands_for_device(device_name, device.get("actions"))
+	if not commands:
+		print("Không có lệnh cho thiết bị. Khai báo <DEVICE_NAME>_COMMANDS trong .env")
 		return 2
+	action_ids = list(commands.keys())
+	labels = [commands[a].get("label", a) for a in action_ids]
+	ai = pick(labels, f"Thiết bị: {device_name} - Chọn lệnh:")
+	action_id = action_ids[ai]
+	cmd_def = commands.get(action_id)
+
+	# If full frame spec provided, build; else try hex string fallback
+	frame_hex = cmd_def.get("hex") if isinstance(cmd_def, dict) else None
+	if frame_hex:
+		payload = bytes.fromhex(frame_hex.replace(' ', ''))
+		hex_str = payload.hex()
+	else:
+		if not all(k in cmd_def for k in ("command_code", "instruction_code")):
+			print("Lệnh không đủ thông tin. Cần command_code và instruction_code hoặc hex.")
+			return 2
+		frame = build_frame_from_command(cmd_def)
+		hex_str = frame.hex()
 
 	print(f"Gửi tới {port} @ {baud}: {hex_str}")
 	ctl = IoTController()

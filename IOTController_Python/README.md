@@ -1,73 +1,47 @@
 # IOTController_Python
 
-Điều khiển thiết bị IoT qua cổng serial (COM) bằng Python và mã hex.
-
-Mặc định giao tiếp 115200, 8N1, không parity (theo tài liệu giao thức).
+Điều khiển thiết bị IoT qua cổng serial (COM) bằng Python, gửi khung HEX theo 115200 8N1.
 
 ## Cài đặt
-
-1) Cài Python 3.10+ và pip.
-2) Cài thư viện:
 
 ```bash
 pip install -r IOTController_Python/requirements.txt
 ```
 
-## Các lệnh cơ bản
+## Cấu hình bằng .env
 
-- Liệt kê cổng COM:
-
-```bash
-python IOTController_Python/cli.py list
+- Khai báo thiết bị và cổng COM qua biến `DEVICES` (danh sách name:COM, phân tách bằng `;`):
+```
+DEVICES=Cup-Dropping Machine:COM10
 ```
 
-- Gửi mã hex tới thiết bị (ví dụ COM3, baud 115200):
-
-```bash
-python IOTController_Python/cli.py send --port COM3 --baud 115200 --hex "04 07 AA 01 00 B6 FF"
+- Khai báo lệnh cho từng thiết bị bằng JSON trong `<DEVICE_NAME>_COMMANDS` (tên thiết bị đổi thành KEY UPPERCASE và thay khoảng trắng bằng `_`). Ví dụ cho "Cup-Dropping Machine":
 ```
-
-- Gửi theo ID hành động trong `actions.json` (đã khai báo sẵn các khung):
-
-```bash
-python IOTController_Python/cli.py send-id --id dispense_one --port COM3
-```
-
-- Tự dựng khung theo quy tắc: `cmd, len, ins, data..., checksum, FF`:
-
-```bash
-python IOTController_Python/cli.py send-frame --cmd-code 0x04 --ins-code 0xAA --data "01 00" --port COM3
-```
-
-Các khung mẫu trong `actions.json` (theo tài liệu):
-
-```json
-{
-  "status_query": "01 06 55 5C FF",
-  "param_query": "02 06 55 5D FF",
-  "shutdown": "03 05 AA B2 FF",
-  "dispense_one": "04 07 AA 01 00 B6 FF"
+CUP_DROPPING_MACHINE_COMMANDS={
+  "status_query": {"command_code": "0x01", "instruction_code": "0x55", "data_bytes": []},
+  "param_query":  {"command_code": "0x02", "instruction_code": "0x55", "data_bytes": []},
+  "drop_cup":     {"command_code": "0x04", "instruction_code": "0xAA", "data_bytes": [1,0]},
+  "shutdown":     {"command_code": "0x03", "instruction_code": "0xAA", "data_bytes": []}
 }
 ```
+- Trường `data_bytes` là mảng số (0-255). `command_code` và `instruction_code` nhận dạng dạng `0x..`.
+- Chương trình sẽ tự tính Length và Checksum và thêm byte kết thúc `0xFF`.
 
-- `status_query`: 0x01, query 0x55
-- `param_query`: 0x02, query 0x55
-- `shutdown`: 0x03, set 0xAA
-- `dispense_one`: 0x04, set 0xAA, Beverage=0x01, Data1=0x00 (Reserved)
-
-Tùy chọn đọc sau khi gửi:
+## Chạy
 
 ```bash
-python IOTController_Python/cli.py send-id --id status_query --port COM3 --read 16
+IOTController_Python\run_console.bat
 ```
+- Chọn thiết bị từ danh sách trong `DEVICES`.
+- Chọn lệnh từ danh sách key trong `<DEVICE_NAME>_COMMANDS`.
+- Chương trình tự build khung và gửi qua COM tương ứng.
 
-Hoặc đọc cho đến khi gặp `FF` và đủ độ dài mong đợi:
-
+## Gửi thủ công (tuỳ chọn)
+- CLI gửi khung dựng sẵn:
 ```bash
-python IOTController_Python/cli.py send-id --id status_query --port COM3 --until FF
+python IOTController_Python/cli.py send-frame --cmd-code 0x04 --ins-code 0xAA --data "01 00" --port COM10
 ```
 
-## Lưu ý
-- Checksum là tổng 8-bit của toàn bộ bytes trừ checksum và 0xFF.
-- Mã ví dụ "Drop one cup": `04 07 aa 01 00 B6 ff`.
-- Nếu không thấy COM, kiểm tra driver USB và quyền truy cập.
+## Ghi chú
+- Giao thức mặc định: 115200, 8N1, không parity.
+- Nếu thiết bị khác, chỉ cần thêm vào `DEVICES` và tạo `<DEVICE_NAME>_COMMANDS` tương ứng.
