@@ -25,24 +25,21 @@ ArmController_Python/
 - Python 3.7+ 
 - Robot Fairino với IP có thể truy cập
 
-## Cài đặt và sử dụng
+## Cách sử dụng đơn giản
 
-### 1. Cài đặt Python
+### Chạy ứng dụng
 ```bash
-# Tải và cài đặt Python từ python.org
-# Hoặc sử dụng Anaconda/Miniconda
+# Chỉ cần double-click file này:
+run.bat
 ```
 
-### 2. Chạy ứng dụng
+### Chạy trực tiếp (nếu cần)
 ```bash
-# Cách 1: Sử dụng batch file (dễ nhất)
-run_console.bat
+# Với SDK (khuyến nghị)
+python robot_with_sdk.py
 
-# Cách 2: Chạy trực tiếp
-python robot_control.py
-
-# Cách 3: Script đơn giản
-python run_robot.py
+# Đơn giản (fallback)
+python simple_robot.py
 ```
 
 ### 3. Cấu hình robot
@@ -60,15 +57,20 @@ python run_robot.py
 
 ## Menu chính
 ```
-=== Fairino Robot Console (Python) ===
-0. Test connection (RPC/TCP diagnostics)
-1. Upload Lua file
-2. Run Lua file
-3. View log
-4. Exit
-Select option:
-
-==========================================
+==================================================
+    FAIRINO ROBOT CONTROL - PYTHON
+==================================================
+0. Kiem tra ket noi
+1. Ket noi robot
+2. Ngat ket noi
+3. Upload file Lua
+4. Chay file Lua
+5. Dung chuong trinh
+6. Tam dung chuong trinh
+7. Tiep tuc chuong trinh
+8. Thong tin robot
+9. Thoat
+==================================================
 ```
 
 ## API chính
@@ -88,10 +90,15 @@ robot.stop_program()
 ```
 
 ## Script có sẵn
-1. **robot_control.py**: Script chính với menu đầy đủ
-2. **run_robot.py**: Script đơn giản, chạy tất cả Lua files
-3. **test_robot.py**: Script test kết nối và chức năng
-4. **simple_robot_control.py**: Script với class wrapper
+1. **robot_with_sdk.py**: Script chính sử dụng SDK Python (khuyến nghị)
+2. **simple_robot.py**: Script đơn giản chỉ dùng XML-RPC (fallback)
+3. **robot_control.py**: Script với menu đầy đủ
+4. **run_robot.py**: Script đơn giản, chạy tất cả Lua files
+5. **test_robot.py**: Script test kết nối và chức năng
+
+## Batch files để chạy dễ dàng
+1. **start_robot.bat**: Chạy script với SDK (robot_with_sdk.py)
+2. **start_simple.bat**: Chạy script đơn giản (simple_robot.py)
 
 ## Troubleshooting
 1. **Không kết nối được robot**: Kiểm tra IP và network
@@ -117,4 +124,4 @@ if robot.connect():
 ```
 
 ## Liên hệ
-Nếu có vấn đề, vui lòng liên hệ KoroKoro.
+Nếu có vấn đề, vui lòng liên hệ team phát triển.

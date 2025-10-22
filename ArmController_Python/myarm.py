@@ -46,8 +46,8 @@ def get_robot():
             # vendored package not present or failed; continue to other options
             pass
 
-        # Next, try the repo SDK path (older behavior)
-        sdk_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'fairino-python-sdk-main', 'fairino-python-sdk-main', 'windows'))
+        # Next, try the local SDK path
+        sdk_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'fairino_sdk'))
         sdk_path = os.path.abspath(sdk_path)
         if os.path.isdir(sdk_path):
             if sdk_path not in sys.path:

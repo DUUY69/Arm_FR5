@@ -16,9 +16,15 @@ ArmController_C#/
 │   ├── Program.cs          # Entry point
 │   ├── Form1.cs            # Form chính
 │   └── RobotController.cs  # Controller chính
+├── examples/               # Ví dụ sử dụng SDK
+│   └── testFrRobot/        # Project ví dụ hoàn chỉnh
 ├── lua_scripts/            # Script Lua cho robot
 ├── dist/                   # File executable và DLL
-└── README.md              # Hướng dẫn này
+├── packages/               # NuGet packages
+├── fairino.sln            # Solution file
+├── start_app.bat          # Batch file chạy ứng dụng
+├── build_project.bat      # Batch file build project
+└── README.md             # Hướng dẫn này
 ```
 
 ## Yêu cầu hệ thống
@@ -27,20 +33,19 @@ ArmController_C#/
 - Visual Studio 2019+ (để build)
 - Robot Fairino với IP có thể truy cập
 
-## Cài đặt và sử dụng
+## Cách sử dụng đơn giản
 
-### 1. Build project
+### Chạy ứng dụng
 ```bash
-# Mở Visual Studio và build solution
-# Hoặc sử dụng command line:
-msbuild My_Arm.sln /p:Configuration=Release
+# Chỉ cần double-click file này:
+run.bat
 ```
 
-### 2. Chạy ứng dụng
+### Build project (nếu cần)
 ```bash
-# Chạy file executable
-cd dist
-My_Arm.exe
+# Mở Visual Studio và build solution
+# Hoặc command line:
+msbuild fairino.sln /p:Configuration=Release
 ```
 
 ### 3. Cấu hình robot
@@ -74,10 +79,16 @@ robot.ProgramRun();
 robot.ProgramStop();
 ```
 
+## Batch Files
+1. **start_app.bat**: Chạy ứng dụng (tự động tìm executable)
+2. **build_project.bat**: Build project từ command line
+
 ## Troubleshooting
 1. **Không kết nối được robot**: Kiểm tra IP và network
 2. **Upload Lua thất bại**: Kiểm tra file Lua có hợp lệ không
 3. **Robot không chạy**: Kiểm tra robot đã enable chưa
+4. **Build thất bại**: Cài đặt Visual Studio 2019+ hoặc Build Tools
+5. **Executable không tìm thấy**: Chạy build_project.bat trước
 
 ## Liên hệ
-Nếu có vấn đề, vui lòng liên hệ KoroKoro.
+Nếu có vấn đề, vui lòng liên hệ team phát triển.
