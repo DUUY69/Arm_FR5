@@ -30,7 +30,7 @@ ArmController_Python/
 ### Chạy ứng dụng
 ```bash
 # Chỉ cần double-click file này:
-run.bat
+run_console
 ```
 
 ### Chạy trực tiếp (nếu cần)
