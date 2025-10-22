@@ -48,8 +48,25 @@ def resolve_com(env_key: str | None, default_com: str | None) -> str:
 	return default_com or "COM1"
 
 
+def get_action_hex(actions_map: dict, action_id: str, env_prefix: str | None) -> str | None:
+	# Highest priority: env override, e.g. CUP_DROPPER_DISPENSE_ONE
+	if env_prefix:
+		env_key = f"{env_prefix}{action_id}".upper()
+		val = os.getenv(env_key)
+		if val:
+			return val
+	# Then from actions.json
+	if action_id in actions_map:
+		return actions_map[action_id]
+	for _, group in actions_map.items():
+		if isinstance(group, dict) and action_id in group:
+			return group[action_id]
+	return None
+
+
 def main() -> int:
-	devices = load_json(DEVICES_FILE).get("devices", [])
+	devices_data = load_json(DEVICES_FILE)
+	devices = devices_data.get("devices", [])
 	if not devices:
 		print("Không có thiết bị trong devices.json")
 		return 2
@@ -69,15 +86,9 @@ def main() -> int:
 	# resolve COM and baud
 	port = resolve_com(device.get("env_com"), device.get("default_com"))
 	baud = int(device.get("baud", 115200))
+	env_prefix = device.get("env_prefix")
 
-	hex_str = None
-	if action_id in actions_map:
-		hex_str = actions_map[action_id]
-	else:
-		for _, group in actions_map.items():
-			if isinstance(group, dict) and action_id in group:
-				hex_str = group[action_id]
-				break
+	hex_str = get_action_hex(actions_map, action_id, env_prefix)
 	if not hex_str:
 		print(f"Không tìm thấy mã hex cho action: {action_id}")
 		return 2

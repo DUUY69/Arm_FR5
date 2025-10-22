@@ -4,6 +4,7 @@
 			"id": "cup_dropper",
 			"name": "Cup-Dropping Machine",
 			"env_com": "CUP_DROPPER_COM",
+			"env_prefix": "CUP_DROPPER_",
 			"default_com": "COM10",
 			"baud": 115200,
 			"actions": [
