@@ -37,6 +37,32 @@ python IOTController_Python/cli.py send --port COM3 --hex "A1 01 FF" --read 8
 python IOTController_Python/cli.py send --port COM3 --hex "A1 01 FF" --until FF0D
 ```
 
+- Gửi theo ID hành động định nghĩa trong `actions.json`:
+
+```bash
+python IOTController_Python/cli.py send-id --id turn_on --port COM3 --baud 9600
+```
+
+`actions.json` có thể dạng phẳng hoặc nhóm:
+
+```json
+{
+  "turn_on": "A1 01 FF",
+  "turn_off": "A1 00 FF"
+}
+```
+
+hoặc
+
+```json
+{
+  "examples": {
+    "turn_on": "A1 01 FF",
+    "turn_off": "A1 00 FF"
+  }
+}
+```
+
 Tùy chọn thêm:
 - `--timeout 1.0` thời gian chờ đọc (giây)
 - `--rtscts` bật RTS/CTS

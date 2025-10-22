@@ -1,0 +1,6 @@
+{
+	"examples": {
+		"turn_on": "A1 01 FF",
+		"turn_off": "A1 00 FF"
+	}
+}
