@@ -5,9 +5,13 @@ from typing import Any
 
 from iot_controller import IoTController
 
+# Load environment from multiple common files if available
 try:
 	from dotenv import load_dotenv  # type: ignore
-	load_dotenv()
+	for env_name in (".env", ".env.local", ".env.example", ".env.sample", "sample.env"):
+		path = os.path.join(os.path.dirname(__file__), env_name)
+		if os.path.exists(path):
+			load_dotenv(dotenv_path=path, override=False)
 except Exception:
 	pass
 
