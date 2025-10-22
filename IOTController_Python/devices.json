@@ -1,0 +1,17 @@
+{
+	"devices": [
+		{
+			"id": "cup_dropper",
+			"name": "Cup-Dropping Machine",
+			"env_com": "CUP_DROPPER_COM",
+			"default_com": "COM10",
+			"baud": 115200,
+			"actions": [
+				{"id": "status_query", "label": "Query Status"},
+				{"id": "param_query",  "label": "Query Parameters"},
+				{"id": "shutdown",     "label": "Shutdown"},
+				{"id": "dispense_one", "label": "Dispense One Cup"}
+			]
+		}
+	]
+}
