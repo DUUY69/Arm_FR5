@@ -1,6 +1,6 @@
 {
-	"examples": {
-		"turn_on": "A1 01 FF",
-		"turn_off": "A1 00 FF"
-	}
+	"status_query": "01 06 55 5C FF",
+	"param_query": "02 06 55 5D FF",
+	"shutdown": "03 05 AA B2 FF",
+	"dispense_one": "04 07 AA 01 00 B6 FF"
 }

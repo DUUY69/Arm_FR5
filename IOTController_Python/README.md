@@ -2,6 +2,8 @@
 
 Điều khiển thiết bị IoT qua cổng serial (COM) bằng Python và mã hex.
 
+Mặc định giao tiếp 115200, 8N1, không parity (theo tài liệu giao thức).
+
 ## Cài đặt
 
 1) Cài Python 3.10+ và pip.
@@ -19,68 +21,53 @@ pip install -r IOTController_Python/requirements.txt
 python IOTController_Python/cli.py list
 ```
 
-- Gửi mã hex tới thiết bị (ví dụ COM3, baud 9600):
+- Gửi mã hex tới thiết bị (ví dụ COM3, baud 115200):
 
 ```bash
-python IOTController_Python/cli.py send --port COM3 --baud 9600 --hex "A1 01 FF"
+python IOTController_Python/cli.py send --port COM3 --baud 115200 --hex "04 07 AA 01 00 B6 FF"
 ```
 
-- Gửi và đọc lại 8 byte phản hồi:
+- Gửi theo ID hành động trong `actions.json` (đã khai báo sẵn các khung):
 
 ```bash
-python IOTController_Python/cli.py send --port COM3 --hex "A1 01 FF" --read 8
+python IOTController_Python/cli.py send-id --id dispense_one --port COM3
 ```
 
-- Gửi và đọc cho đến khi gặp mẫu hex (ví dụ FF0D):
+- Tự dựng khung theo quy tắc: `cmd, len, ins, data..., checksum, FF`:
 
 ```bash
-python IOTController_Python/cli.py send --port COM3 --hex "A1 01 FF" --until FF0D
+python IOTController_Python/cli.py send-frame --cmd-code 0x04 --ins-code 0xAA --data "01 00" --port COM3
 ```
 
-- Gửi theo ID hành động định nghĩa trong `actions.json`:
-
-```bash
-python IOTController_Python/cli.py send-id --id turn_on --port COM3 --baud 9600
-```
-
-`actions.json` có thể dạng phẳng hoặc nhóm:
+Các khung mẫu trong `actions.json` (theo tài liệu):
 
 ```json
 {
-  "turn_on": "A1 01 FF",
-  "turn_off": "A1 00 FF"
+  "status_query": "01 06 55 5C FF",
+  "param_query": "02 06 55 5D FF",
+  "shutdown": "03 05 AA B2 FF",
+  "dispense_one": "04 07 AA 01 00 B6 FF"
 }
 ```
 
-hoặc
+- `status_query`: 0x01, query 0x55
+- `param_query`: 0x02, query 0x55
+- `shutdown`: 0x03, set 0xAA
+- `dispense_one`: 0x04, set 0xAA, Beverage=0x01, Data1=0x00 (Reserved)
 
-```json
-{
-  "examples": {
-    "turn_on": "A1 01 FF",
-    "turn_off": "A1 00 FF"
-  }
-}
+Tùy chọn đọc sau khi gửi:
+
+```bash
+python IOTController_Python/cli.py send-id --id status_query --port COM3 --read 16
 ```
 
-Tùy chọn thêm:
-- `--timeout 1.0` thời gian chờ đọc (giây)
-- `--rtscts` bật RTS/CTS
-- `--xonxoff` bật XON/XOFF
+Hoặc đọc cho đến khi gặp `FF` và đủ độ dài mong đợi:
 
-## Dùng trong code Python
-
-```python
-from IOTController_Python.iot_controller import IoTController
-
-ctl = IoTController()
-ctl.open("COM3", baudrate=9600, timeout=1.0)
-ctl.send_hex("A1 01 FF")
-data = ctl.read_bytes(8)
-print(data.hex())
-ctl.close()
+```bash
+python IOTController_Python/cli.py send-id --id status_query --port COM3 --until FF
 ```
 
 ## Lưu ý
-- Hex có thể viết dạng `A1 01 FF` hoặc `0xA101FF`.
-- Nếu không thấy COM, hãy kiểm tra driver USB và quyền truy cập.
+- Checksum là tổng 8-bit của toàn bộ bytes trừ checksum và 0xFF.
+- Mã ví dụ "Drop one cup": `04 07 aa 01 00 B6 ff`.
+- Nếu không thấy COM, kiểm tra driver USB và quyền truy cập.

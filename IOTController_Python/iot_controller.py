@@ -1,5 +1,5 @@
 import binascii
-from typing import Optional
+from typing import Optional, List
 
 import serial
 from serial.tools import list_ports
@@ -17,6 +17,20 @@ def normalize_hex_string(hex_string: str) -> bytes:
 		raise ValueError(f"Invalid hex string: {hex_string}") from exc
 
 
+def compute_checksum(payload_without_checksum_and_end: bytes) -> int:
+	return sum(payload_without_checksum_and_end) & 0xFF
+
+
+def build_frame(command_code: int, instruction_code: int, data_bytes: bytes | None = None) -> bytes:
+	if data_bytes is None:
+		data_bytes = b""
+	# length = total bytes including checksum and end
+	length_value = 3 + len(data_bytes) + 2  # cmd + len + ins + data... + checksum + end
+	frame_wo_cs_end = bytes([command_code, length_value, instruction_code]) + data_bytes
+	checksum = compute_checksum(frame_wo_cs_end)
+	return frame_wo_cs_end + bytes([checksum, 0xFF])
+
+
 class IoTController:
 	def __init__(self) -> None:
 		self._ser: Optional[serial.Serial] = None
@@ -25,7 +39,7 @@ class IoTController:
 	def list_ports() -> list[str]:
 		return [p.device for p in list_ports.comports()]
 
-	def open(self, port: str, baudrate: int = 9600, timeout: float = 1.0, rtscts: bool = False, xonxoff: bool = False) -> None:
+	def open(self, port: str, baudrate: int = 115200, timeout: float = 1.0, rtscts: bool = False, xonxoff: bool = False) -> None:
 		if self._ser and self._ser.is_open:
 			self.close()
 		self._ser = serial.Serial(
@@ -34,6 +48,9 @@ class IoTController:
 			timeout=timeout,
 			rtscts=rtscts,
 			xonxoff=xonxoff,
+			bytesize=serial.EIGHTBITS,
+			parity=serial.PARITY_NONE,
+			stopbits=serial.STOPBITS_ONE,
 		)
 
 	def is_open(self) -> bool:
@@ -48,6 +65,15 @@ class IoTController:
 			raise RuntimeError("Serial port is not open")
 		payload = normalize_hex_string(hex_string)
 		written = self._ser.write(payload)
+		self._ser.flush()
+		return written
+
+	def send_frame(self, command_code: int, instruction_code: int, data_hex: str | None = None) -> int:
+		if not self.is_open():
+			raise RuntimeError("Serial port is not open")
+		data_bytes = normalize_hex_string(data_hex) if data_hex else b""
+		frame = build_frame(command_code, instruction_code, data_bytes)
+		written = self._ser.write(frame)
 		self._ser.flush()
 		return written
 
@@ -73,4 +99,4 @@ class IoTController:
 		return bytes(buffer)
 
 
-__all__ = ["IoTController", "normalize_hex_string"]
+__all__ = ["IoTController", "normalize_hex_string", "build_frame", "compute_checksum"]

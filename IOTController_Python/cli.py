@@ -4,7 +4,7 @@ import binascii
 import json
 import os
 
-from iot_controller import IoTController
+from iot_controller import IoTController, build_frame
 
 
 ACTIONS_FILE = os.path.join(os.path.dirname(__file__), "actions.json")
@@ -48,7 +48,6 @@ def cmd_send_id(args: argparse.Namespace) -> int:
 	if not actions:
 		print("No actions loaded. Create IOTController_Python/actions.json", file=sys.stderr)
 		return 2
-	# support top-level or grouped namespaces in JSON
 	hex_value = None
 	if args.id in actions:
 		hex_value = actions[args.id]
@@ -64,6 +63,25 @@ def cmd_send_id(args: argparse.Namespace) -> int:
 	return cmd_send(args)
 
 
+def cmd_send_frame(args: argparse.Namespace) -> int:
+	ctl = IoTController()
+	ctl.open(args.port, baudrate=args.baud, timeout=args.timeout, rtscts=args.rtscts, xonxoff=args.xonxoff)
+	try:
+		data_bytes = args.data or ""
+		frame = build_frame(args.cmd_code, args.ins_code, bytes.fromhex(data_bytes.replace(" ", "")) if data_bytes else b"")
+		written = ctl.send_hex(frame.hex())
+		print(f"Wrote {written} bytes")
+		if args.read is not None:
+			data = ctl.read_bytes(args.read)
+			print(binascii.hexlify(data).decode())
+		if args.until:
+			data = ctl.read_until_hex(args.until, max_bytes=args.max_bytes)
+			print(binascii.hexlify(data).decode())
+		return 0
+	finally:
+		ctl.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
 	p = argparse.ArgumentParser(description="IoT Serial Controller over COM using hex payloads")
 	sub = p.add_subparsers(dest="cmd", required=True)
@@ -73,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 	p_send = sub.add_parser("send", help="Send hex to a COM port")
 	p_send.add_argument("--port", required=True, help="COM port e.g. COM3")
-	p_send.add_argument("--baud", type=int, default=9600, help="Baud rate (default 9600)")
+	p_send.add_argument("--baud", type=int, default=115200, help="Baud rate (default 115200)")
 	p_send.add_argument("--timeout", type=float, default=1.0, help="Read timeout seconds")
 	p_send.add_argument("--rtscts", action="store_true", help="Enable RTS/CTS flow control")
 	p_send.add_argument("--xonxoff", action="store_true", help="Enable XON/XOFF flow control")
@@ -86,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
 	p_send_id = sub.add_parser("send-id", help="Send by action id defined in actions.json")
 	p_send_id.add_argument("--id", required=True, help="Action id key in actions.json")
 	p_send_id.add_argument("--port", required=True, help="COM port e.g. COM3")
-	p_send_id.add_argument("--baud", type=int, default=9600, help="Baud rate (default 9600)")
+	p_send_id.add_argument("--baud", type=int, default=115200, help="Baud rate (default 115200)")
 	p_send_id.add_argument("--timeout", type=float, default=1.0, help="Read timeout seconds")
 	p_send_id.add_argument("--rtscts", action="store_true", help="Enable RTS/CTS flow control")
 	p_send_id.add_argument("--xonxoff", action="store_true", help="Enable XON/XOFF flow control")
@@ -94,6 +112,20 @@ def build_parser() -> argparse.ArgumentParser:
 	p_send_id.add_argument("--until", default=None, help="Read until hex pattern matched e.g. 'FF0D'")
 	p_send_id.add_argument("--max-bytes", type=int, default=4096, help="Max bytes to read when using --until")
 	p_send_id.set_defaults(func=cmd_send_id)
+
+	p_send_frame = sub.add_parser("send-frame", help="Build and send a framed packet: cmd,len,ins,data...,checksum,FF")
+	p_send_frame.add_argument("--cmd-code", type=lambda x: int(x, 0), required=True, help="Command code, e.g. 0x04")
+	p_send_frame.add_argument("--ins-code", type=lambda x: int(x, 0), required=True, help="Instruction code, 0x55(query) or 0xAA(set)")
+	p_send_frame.add_argument("--data", default=None, help="Data bytes in hex, e.g. '01 00'")
+	p_send_frame.add_argument("--port", required=True, help="COM port e.g. COM3")
+	p_send_frame.add_argument("--baud", type=int, default=115200, help="Baud rate (default 115200)")
+	p_send_frame.add_argument("--timeout", type=float, default=1.0, help="Read timeout seconds")
+	p_send_frame.add_argument("--rtscts", action="store_true", help="Enable RTS/CTS flow control")
+	p_send_frame.add_argument("--xonxoff", action="store_true", help="Enable XON/XOFF flow control")
+	p_send_frame.add_argument("--read", type=int, default=None, help="Read N bytes after send")
+	p_send_frame.add_argument("--until", default=None, help="Read until hex pattern matched e.g. 'FF0D'")
+	p_send_frame.add_argument("--max-bytes", type=int, default=4096, help="Max bytes to read when using --until")
+	p_send_frame.set_defaults(func=cmd_send_frame)
 
 	return p
 
