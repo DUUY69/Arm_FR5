@@ -1,5 +1,6 @@
 import binascii
 from typing import Optional, List
+import time
 
 import serial
 from serial.tools import list_ports
@@ -97,6 +98,35 @@ class IoTController:
 			if buffer.endswith(pattern):
 				break
 		return bytes(buffer)
+
+	def read_frame(self, overall_timeout: float = 2.0) -> bytes:
+		"""Read one framed reply: [cmd][len][ins][data...][checksum][0xFF]."""
+		if not self.is_open():
+			raise RuntimeError("Serial port is not open")
+		start = time.time()
+		buf = bytearray()
+		# Read first two bytes (cmd, len)
+		while len(buf) < 2:
+			b = self._ser.read(1)
+			if b:
+				buf += b
+			else:
+				if time.time() - start > overall_timeout:
+					return bytes(buf)
+		# Determine remaining bytes based on length
+		if len(buf) < 2:
+			return bytes(buf)
+		total_len = buf[1]
+		remaining = max(total_len - len(buf), 0)
+		while remaining > 0:
+			chunk = self._ser.read(remaining)
+			if chunk:
+				buf += chunk
+				remaining = max(total_len - len(buf), 0)
+			else:
+				if time.time() - start > overall_timeout:
+					break
+		return bytes(buf)
 
 
 __all__ = ["IoTController", "normalize_hex_string", "build_frame", "compute_checksum"]
