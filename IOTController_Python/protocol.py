@@ -62,3 +62,19 @@ def normalize_hex_string(hex_string: str) -> bytes:
 		raise ValueError(f"Invalid hex string: {hex_string}") from exc
 
 
+def build_frame(command_code: int, instruction_code: int, data_bytes: bytes | None = None) -> bytes:
+	"""Build a complete frame with checksum and end code."""
+	if data_bytes is None:
+		data_bytes = b""
+	# length = total bytes including checksum and end
+	length_value = 3 + len(data_bytes) + 2  # cmd + len + ins + data... + checksum + end
+	frame_wo_cs_end = bytes([command_code, length_value, instruction_code]) + data_bytes
+	checksum = compute_checksum_without_end(frame_wo_cs_end)
+	return frame_wo_cs_end + bytes([checksum, END_CODE])
+
+
+def compute_checksum(payload_without_checksum_and_end: bytes) -> int:
+	"""Compute checksum for frame building."""
+	return sum(payload_without_checksum_and_end) & 0xFF
+
+

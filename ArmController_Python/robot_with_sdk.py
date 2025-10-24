@@ -723,7 +723,7 @@ class FairinoRobotSDK:
 def print_menu():
     """In menu chính"""
     print("\n" + "="*50)
-    print("    FAIRINO ROBOT CONTROL - WITH SDK")
+    print("    🦾 FAIRINO ROBOT CONTROL - WITH SDK")
     print("="*50)
     print("0. Upload file Lua")
     print("1. Database Manager (Upload & Activate)")
@@ -756,8 +756,8 @@ def main():
             print("[INFO] Khong the kiem tra che do auto")
         
         print(f"\nTrang thai robot:")
-        print(f"  - Ket noi: {'✓' if robot.connected else '✗'}")
-        print(f"  - Che do auto: {'✓' if robot.auto_mode else '✗'}")
+        print(f"  - Ket noi: {'OK' if robot.connected else 'FAIL'}")
+        print(f"  - Che do auto: {'OK' if robot.auto_mode else 'FAIL'}")
         print(f"  - IP: {robot.robot_ip}")
         
     else:

@@ -1,6 +1,7 @@
 @echo off
 setlocal
-cd /d %~dp0\..
-python IOTController_Python\iot_menu.py %*
+cd /d %~dp0
+echo Starting IOTController Launcher...
+python launcher.py %*
 pause
 endlocal
