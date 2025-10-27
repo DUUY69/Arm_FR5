@@ -1,0 +1,54 @@
+================================================================================
+    ARM CONTROLLER - QUICK START GUIDE
+================================================================================
+
+CACH SU DUNG NHANH:
+
+1. CAI DAT (Lay nhat):
+   - Double-click: SetupEnvironment.bat
+   - Doi 5-10 phut
+   - Xong!
+
+2. SU DUNG:
+   - Double-click: start_arm_controller.bat
+   - Hoac chay: python arm_controller_gui.py
+
+3. DIEU KHIEN ROBOT:
+   - Nhap IP: 192.168.58.2 (mac dinh)
+   - Click "Ket noi"
+   - Chon file Lua
+   - Click "Upload" va "Chay"
+
+================================================================================
+
+NEU CO LOI:
+
+1. Robot khong ket noi duoc?
+   -> Kiem tra IP dung chua
+   -> Kiem tra robot da bat chua
+   -> Kiem tra mang
+
+2. SDK khong import duoc?
+   -> Chay: SetupEnvironment.bat
+   -> Doi build xong
+
+3. Build SDK that bai?
+   -> Cai Microsoft C++ Build Tools
+   -> Hoac Visual Studio
+   -> Chay lai SetupEnvironment.bat
+
+================================================================================
+
+FILE QUAN TRONG:
+
+- SetupEnvironment.bat    -> Cai dat dau tien
+- start_arm_controller.bat -> Chay ung dung
+- arm_controller_gui.py   -> GUI chinh
+- test_sdk_build.py       -> Test SDK
+
+================================================================================
+
+CHI TIET: Xem HUONG_DAN_CAI_DAT.md
+
+================================================================================
+
