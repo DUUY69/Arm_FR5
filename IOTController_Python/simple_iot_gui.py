@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import codecs
+import threading
 from serial.tools import list_ports
 
 # Cấu hình UTF-8 cho Windows
@@ -86,18 +87,28 @@ class SimpleIoTGUI:
         self.status_label.grid(row=1, column=0, columnspan=5, sticky=tk.W, pady=2)
         
         # Hex input frame
-        hex_frame = ttk.LabelFrame(main_frame, text="Gửi lệnh (GO hoặc 5 để chạy thiết bị)", padding="5")
+        hex_frame = ttk.LabelFrame(main_frame, text="Gửi lệnh", padding="5")
         hex_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         hex_frame.columnconfigure(1, weight=1)
         
-        ttk.Label(hex_frame, text="Lệnh:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        # Mode selection
+        ttk.Label(hex_frame, text="Chế độ:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.send_mode_var = tk.StringVar(value="auto")
+        mode_frame = ttk.Frame(hex_frame)
+        mode_frame.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
+        ttk.Radiobutton(mode_frame, text="Tự động", variable=self.send_mode_var, value="auto").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mode_frame, text="ASCII", variable=self.send_mode_var, value="ascii").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mode_frame, text="Hex Binary", variable=self.send_mode_var, value="hex").pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(hex_frame, text="Lệnh:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.hex_var = tk.StringVar()
         self.hex_entry = ttk.Entry(hex_frame, textvariable=self.hex_var, font=("Courier", 10))
-        self.hex_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
+        self.hex_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
         self.hex_entry.bind('<Return>', lambda e: self.send_raw_hex())
         
-        ttk.Button(hex_frame, text="Gửi", command=self.send_raw_hex).grid(row=0, column=2, sticky=tk.W, pady=2, padx=(5, 0))
-        ttk.Button(hex_frame, text="Clear", command=self.clear_log).grid(row=0, column=3, sticky=tk.W, pady=2, padx=(5, 0))
+        ttk.Button(hex_frame, text="Gửi", command=self.send_raw_hex).grid(row=1, column=2, sticky=tk.W, pady=2, padx=(5, 0))
+        ttk.Button(hex_frame, text="Gửi & Đợi Completion", command=self.send_and_wait_completion).grid(row=2, column=2, sticky=tk.W, pady=2, padx=(5, 0))
+        ttk.Button(hex_frame, text="Clear", command=self.clear_log).grid(row=2, column=3, sticky=tk.W, pady=2, padx=(5, 0))
         
         # Log frame
         log_frame = ttk.LabelFrame(main_frame, text="Log", padding="5")
@@ -295,6 +306,22 @@ class SimpleIoTGUI:
             self.log_message(f"❌ Send error: {e}")
             messagebox.showerror("Lỗi", f"Không thể gửi: {e}")
     
+    def _is_hex_string(self, text):
+        """Kiểm tra xem string có phải hex không"""
+        hex_chars = set('0123456789ABCDEFabcdef')
+        clean = text.replace(' ', '').replace('-', '').replace('0x', '').replace('0X', '')
+        # Chỉ accept nếu: dài > 2, chỉ chứa hex chars, độ dài chẵn
+        if len(clean) < 2:
+            return False
+        if not all(c in hex_chars for c in clean):
+            return False
+        if len(clean) % 2 != 0:
+            return False
+        # Nếu tất cả là số (ví dụ "5"), coi như ASCII
+        if clean.isdigit() and len(clean) <= 3:
+            return False
+        return True
+    
     def send_raw_hex(self):
         """Gửi lệnh đến thiết bị"""
         if not self.is_connected:
@@ -307,19 +334,37 @@ class SimpleIoTGUI:
             return
         
         try:
-            # Xử lý lệnh
-            if command.upper() == "GO":
-                # ASCII "GO"
-                data = b"GO"
-                self.log_message(f"🔧 Sending ASCII: {command}")
-            elif command.isdigit():
-                # ASCII số (như "5" -> "5")
-                data = command.encode('ascii')
-                self.log_message(f"🔧 Sending ASCII: {command}")
+            # Lấy mode gửi
+            mode = self.send_mode_var.get()
+            
+            # Xử lý lệnh theo mode
+            if mode == "hex":
+                # HEX BINARY mode - Force hex
+                hex_clean = command.replace(' ', '').replace('-', '').replace('0x', '').replace('0X', '')
+                data = bytes.fromhex(hex_clean)
+                self.log_message(f"🔧 [HEX MODE] Sending as HEX BINARY: {command}")
+            elif mode == "ascii":
+                # ASCII mode - Force ASCII
+                if command.upper() == "GO":
+                    data = b"GO"
+                else:
+                    data = command.encode('ascii')
+                self.log_message(f"🔧 [ASCII MODE] Sending as ASCII: {command}")
             else:
-                # ASCII khác
-                data = command.encode('ascii')
-                self.log_message(f"🔧 Sending ASCII: {command}")
+                # AUTO mode - Tự động detect
+                if command.upper() == "GO":
+                    data = b"GO"
+                    self.log_message(f"🔧 [AUTO] Detected ASCII: {command}")
+                elif command.isdigit():
+                    data = command.encode('ascii')
+                    self.log_message(f"🔧 [AUTO] Detected ASCII: {command}")
+                elif self._is_hex_string(command):
+                    hex_clean = command.replace(' ', '').replace('-', '').replace('0x', '').replace('0X', '')
+                    data = bytes.fromhex(hex_clean)
+                    self.log_message(f"🔧 [AUTO] Detected HEX BINARY: {command}")
+                else:
+                    data = command.encode('ascii')
+                    self.log_message(f"🔧 [AUTO] Detected ASCII: {command}")
             
             # Debug: Hiển thị dữ liệu sẽ gửi
             self.log_message(f"🔍 Raw Debug - Data: {data.hex().upper()}")
@@ -364,6 +409,88 @@ class SimpleIoTGUI:
         except Exception as e:
             self.log_message(f"❌ Raw send error: {e}")
             messagebox.showerror("Lỗi", f"Không thể gửi raw: {e}")
+    
+    def send_and_wait_completion(self):
+        """Gửi lệnh và đợi phản hồi completion"""
+        if not self.is_connected:
+            messagebox.showerror("Lỗi", "Chưa kết nối thiết bị!")
+            return
+        
+        command = self.hex_var.get().strip().upper()
+        if not command:
+            messagebox.showerror("Lỗi", "Vui lòng nhập lệnh!")
+            return
+        
+        def send_and_wait_thread():
+            try:
+                self.log_message(f"📤 Đang gửi lệnh: {command}")
+                self.log_message(f"⏳ Đang đợi response completion...")
+                
+                # Lấy mode gửi (giống send_raw_hex)
+                mode = self.send_mode_var.get()
+                
+                # Gửi lệnh theo mode
+                if mode == "hex":
+                    # HEX BINARY mode
+                    hex_clean = command.replace(' ', '').replace('-', '').replace('0x', '').replace('0X', '')
+                    data = bytes.fromhex(hex_clean)
+                    self.log_message(f"🔧 [HEX MODE] Sending as HEX BINARY")
+                elif mode == "ascii":
+                    # ASCII mode
+                    if command.upper() == "GO":
+                        data = b"GO"
+                    else:
+                        data = command.encode('ascii')
+                    self.log_message(f"🔧 [ASCII MODE] Sending as ASCII")
+                else:
+                    # AUTO mode
+                    if command.upper() == "GO":
+                        data = b"GO"
+                    elif command.isdigit():
+                        data = command.encode('ascii')
+                    elif self._is_hex_string(command):
+                        hex_clean = command.replace(' ', '').replace('-', '').replace('0x', '').replace('0X', '')
+                        data = bytes.fromhex(hex_clean)
+                        self.log_message(f"🔧 [AUTO] Detected HEX BINARY")
+                    else:
+                        data = command.encode('ascii')
+                
+                if hasattr(self.controller, '_ser') and self.controller._ser and self.controller._ser.is_open:
+                    written = self.controller._ser.write(data)
+                    self.controller._ser.flush()
+                    self.log_message(f"✅ Đã gửi {written} bytes")
+                    
+                    # Clear input
+                    self.root.after(0, lambda: self.hex_var.set(""))
+                    
+                    # Đợi response với timeout
+                    timeout = 10.0  # 10 giây
+                    start_time = time.time()
+                    
+                    while time.time() - start_time < timeout:
+                        if self.controller._ser.in_waiting > 0:
+                            response = self.controller._ser.read(self.controller._ser.in_waiting)
+                            if response:
+                                self.log_message(f"✅ Nhận response: {response.hex().upper()}")
+                                try:
+                                    response_text = response.decode('utf-8', errors='ignore').strip()
+                                    self.log_message(f"📥 Response text: '{response_text}'")
+                                except:
+                                    pass
+                                self.log_message(f"✅ COMPLETION: Thiết bị đã hoàn thành!")
+                                return
+                        time.sleep(0.2)
+                    
+                    self.log_message(f"⚠️ Timeout: Không nhận được response sau {timeout}s")
+                    
+                else:
+                    self.log_message("❌ Serial connection không khả dụng")
+                    
+            except Exception as e:
+                self.log_message(f"❌ Lỗi: {e}")
+                messagebox.showerror("Lỗi", f"Lỗi gửi và đợi completion: {e}")
+        
+        threading.Thread(target=send_and_wait_thread, daemon=True).start()
     
     def log_message(self, message):
         """Thêm message vào log"""

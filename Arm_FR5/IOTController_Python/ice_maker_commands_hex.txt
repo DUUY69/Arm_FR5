@@ -1,0 +1,47 @@
+=======================================
+ICE MAKER - HEX COMMANDS
+COM17, 115200 baud
+=======================================
+
+THẢ NƯỚC 20ML (quantity=2):
+04 07 AA 02 02 B5 FF
+
+THẢ NƯỚC 10ML (quantity=1):
+04 07 AA 02 01 B4 FF
+
+THẢ NƯỚC 30ML (quantity=3):
+04 07 AA 02 03 B6 FF
+
+THẢ 5 VIÊN ĐÁ:
+04 07 AA 01 05 BB FF
+
+THẢ 1 VIÊN ĐÁ:
+04 07 AA 01 01 B7 FF
+
+THẢ ĐÁ NƯỚC 10ML (quantity=1):
+04 07 AA 03 01 B5 FF
+
+=======================================
+CÁCH DÙNG TRONG IoT GUI:
+=======================================
+
+1. Mở start_simple_iot_gui.bat
+2. Chọn ICE_MAKER
+3. Kết nối COM17
+4. Chọn chế độ: "Hex Binary"
+5. Nhập hex (không có space):
+   - Thả nước 20ml: 0407AA0202B5FF
+   - Thả 5 viên đá: 0407AA0105BBFF
+6. Click "Gửi"
+
+=======================================
+CÁCH DÙNG PYTHON:
+=======================================
+
+# Thả nước 20ml
+python send_water_20ml.py
+
+# Thả 5 viên đá
+python send_ice.py
+
+=======================================

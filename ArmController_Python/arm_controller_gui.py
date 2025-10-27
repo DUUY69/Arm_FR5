@@ -124,6 +124,8 @@ class ArmControllerGUI:
                    command=self.import_lua_file).grid(row=1, column=2, pady=(5, 0))
         ttk.Button(lua_frame, text="▶️ Chạy", 
                    command=self.run_lua).grid(row=2, column=0, pady=(5, 0))
+        ttk.Button(lua_frame, text="▶️ Chạy & Đợi Completion", 
+                   command=self.run_lua_and_wait_completion).grid(row=3, column=0, pady=(5, 0))
         
         # Database files section
         db_frame = ttk.LabelFrame(control_frame, text="🗄️ Database Files", padding="5")
@@ -429,6 +431,61 @@ class ArmControllerGUI:
                 self.log_message(f"❌ Lỗi chạy: {e}")
                 
         threading.Thread(target=run_thread, daemon=True).start()
+    
+    def run_lua_and_wait_completion(self):
+        """Chạy file Lua và đợi đến khi hoàn thành"""
+        if not self.connected:
+            messagebox.showerror("Lỗi", "Chưa kết nối robot!")
+            return
+            
+        selection = self.lua_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn file Lua!")
+            return
+            
+        file_path = self.lua_files[selection[0]]
+        
+        def run_and_wait_thread():
+            try:
+                self.log_message(f"▶️ Đang chạy {os.path.basename(file_path)}...")
+                self.log_message(f"⏳ Sẽ đợi đến khi hoàn thành...")
+                
+                # Chạy file Lua
+                try:
+                    filename = os.path.basename(file_path)
+                    remote_path = f"/fruser/{filename}"
+                    
+                    if hasattr(self.robot, 'ProgramLoad') and hasattr(self.robot, 'ProgramRun'):
+                        load_result = self.robot.ProgramLoad(remote_path)
+                        self.log_message(f"ProgramLoad kết quả: {load_result}")
+                        
+                        if int(load_result) == 0:
+                            run_result = self.robot.ProgramRun()
+                            self.log_message(f"ProgramRun kết quả: {run_result}")
+                            
+                            if int(run_result) == 0:
+                                self.log_message("✅ Program đã bắt đầu chạy")
+                                self.log_message("⏳ Đang đợi robot hoàn thành...")
+                                
+                                # Đợi robot hoàn thành (timeout 5 giây để chắc chắn)
+                                if self.check_robot_complete(timeout=5):
+                                    self.log_message("✅ ✅ COMPLETION: Robot đã hoàn thành!")
+                                else:
+                                    self.log_message("⚠️ Timeout: Không nhận được confirmation sau 5s")
+                            else:
+                                self.log_message(f"❌ ProgramRun thất bại: {run_result}")
+                        else:
+                            self.log_message(f"❌ ProgramLoad thất bại: {load_result}")
+                    else:
+                        self.log_message("❌ Robot không có ProgramLoad/ProgramRun!")
+                        
+                except Exception as e:
+                    self.log_message(f"❌ Lỗi: {e}")
+                    
+            except Exception as e:
+                self.log_message(f"❌ Lỗi: {e}")
+                
+        threading.Thread(target=run_and_wait_thread, daemon=True).start()
         
     def upload_activate_db(self):
         """Upload và activate database"""
@@ -647,12 +704,72 @@ class ArmControllerGUI:
                     for method in mode_methods:
                         self.log_message(f"  - {method}")
                 
+                # Tìm các method liên quan đến state/program status
+                state_methods = [m for m in methods if 'state' in m.lower() or 'status' in m.lower() or 'motion' in m.lower() or 'program' in m.lower()]
+                if state_methods:
+                    self.log_message("📊 Methods kiểm tra trạng thái:")
+                    for method in state_methods:
+                        self.log_message(f"  - {method}")
+                
                 self.log_message("✅ Debug hoàn thành!")
                 
             except Exception as e:
                 self.log_message(f"❌ Lỗi debug: {e}")
                 
         threading.Thread(target=debug_thread, daemon=True).start()
+    
+    def check_robot_complete(self, timeout=3):
+        """Kiểm tra xem robot có hoàn thành chương trình không (timeout mặc định 3 giây)"""
+        if not self.connected:
+            return False
+        
+        try:
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                # Thử các method để kiểm tra program state
+                if hasattr(self.robot, 'robot_state_pkg'):
+                    try:
+                        program_state = self.robot.robot_state_pkg.program_state
+                        # program_state: 0 = không chạy, 1 = đang chạy, 2 = tạm dừng, 3 = lỗi, 4 = hoàn thành
+                        if program_state == 0 or program_state == 4:
+                            return True
+                    except:
+                        pass
+                
+                # Thử method GetProgramState nếu có
+                if hasattr(self.robot, 'GetProgramState'):
+                    try:
+                        state_result = self.robot.GetProgramState()
+                        if isinstance(state_result, tuple):
+                            err, state = state_result
+                            if err == 0 and state == 0:  # 0 = finished
+                                return True
+                        elif state_result == 0:
+                            return True
+                    except:
+                        pass
+                
+                # Thử method CheckCommandFinish nếu có
+                if hasattr(self.robot, 'CheckCommandFinish'):
+                    try:
+                        finish_result = self.robot.CheckCommandFinish()
+                        if isinstance(finish_result, tuple):
+                            err, finished = finish_result
+                            if err == 0 and finished:
+                                return True
+                        elif finish_result:
+                            return True
+                    except:
+                        pass
+                
+                time.sleep(0.1)  # Chờ 0.1 giây trước khi kiểm tra lại (tăng frequency)
+                
+            self.log_message("⚠️ Timeout kiểm tra robot hoàn thành!")
+            return False
+            
+        except Exception as e:
+            self.log_message(f"❌ Lỗi kiểm tra robot: {e}")
+            return False
 
 def main():
     """Hàm chính"""
