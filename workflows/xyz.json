@@ -1,0 +1,25 @@
+{
+  "workflow_id": "3cb7540a-d770-43a5-af08-2adc344fce01",
+  "workflow_name": "xyz",
+  "workflow_version": "1.0",
+  "workflow_description": "",
+  "created_at": 1761635874.816399,
+  "steps": [
+    {
+      "id": "e870bde7-a2f3-4c79-9b7e-594d01b494c3",
+      "name": "New Step",
+      "type": "iot",
+      "action_config": {
+        "type": "send_command",
+        "device": "STIRRER",
+        "command": "10"
+      },
+      "wait_config": {
+        "type": "iot_response",
+        "device": "STIRRER"
+      },
+      "timeout": 30.0,
+      "created_at": 1761635874.815399
+    }
+  ]
+}

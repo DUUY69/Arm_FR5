@@ -463,11 +463,9 @@ class SimpleIoTGUI:
                     # Clear input
                     self.root.after(0, lambda: self.hex_var.set(""))
                     
-                    # Đợi response với timeout
-                    timeout = 10.0  # 10 giây
-                    start_time = time.time()
-                    
-                    while time.time() - start_time < timeout:
+                    # Đợi response (không timeout)
+                    self.log_message("⏳ Đang đợi response completion (không timeout)...")
+                    while True:
                         if self.controller._ser.in_waiting > 0:
                             response = self.controller._ser.read(self.controller._ser.in_waiting)
                             if response:
@@ -480,8 +478,6 @@ class SimpleIoTGUI:
                                 self.log_message(f"✅ COMPLETION: Thiết bị đã hoàn thành!")
                                 return
                         time.sleep(0.2)
-                    
-                    self.log_message(f"⚠️ Timeout: Không nhận được response sau {timeout}s")
                     
                 else:
                     self.log_message("❌ Serial connection không khả dụng")

@@ -1,0 +1,60 @@
+{
+  "workflow_id": "stirrer-workflow-v1",
+  "workflow_name": "www",
+  "workflow_version": "1.0",
+  "workflow_description": "",
+  "created_at": 1761637824.1337912,
+  "steps": [
+    {
+      "id": "e4fc661b-946d-46a6-ba6e-02f33083c719",
+      "name": "New Step",
+      "type": "iot",
+      "action_config": {
+        "type": "send_command",
+        "device": "ICEMAKE",
+        "command": "0407AA0205BCFF"
+      },
+      "wait_config": {
+        "type": "iot_response",
+        "device": "ICEMAKE"
+      },
+      "timeout": 30.0,
+      "created_at": 1761637795.9998035
+    },
+    {
+      "id": "delay_10s",
+      "name": "Chờ 11 giây",
+      "type": "delay",
+      "action_config": {
+        "type": "delay",
+        "delay": 5.0
+      },
+      "wait_config": {
+        "type": "time_delay",
+        "delay": 5.0
+      },
+      "timeout": 1.0,
+      "created_at": 1761639000.000000
+    },
+    {
+      "id": "b61450e3-1873-49d5-bb0a-7cef65273452",
+      "name": "New Step",
+      "type": "iot",
+      "action_config": {
+        "type": "send_command",
+        "device": "STIRRER",
+        "command": "10",
+        "mode": "ascii",
+        "terminator": "none"
+      },
+      "wait_config": {
+        "type": "iot_response",
+        "device": "STIRRER",
+        "prefer_raw": true,
+        "timeout": 10.0
+      },
+      "timeout": 30.0,
+      "created_at": 1761637824.131155
+    }
+  ]
+}

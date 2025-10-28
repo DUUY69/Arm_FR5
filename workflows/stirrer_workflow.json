@@ -1,0 +1,24 @@
+{
+  "workflow_id": "stirrer-workflow-v1",
+  "workflow_name": "Stirrer Workflow",
+  "workflow_version": "1.0",
+  "workflow_description": "Workflow chạy máy khuấy: MoveToMotor -> Stirrer -> OutMotor",
+  "created_at": 1761635503.931583,
+  "steps": [
+    {
+      "id": "start_stirrer",
+      "name": "Bật máy khuấy với tốc độ 10 (chạy 5 giây)",
+      "type": "iot",
+  "action_config": {
+      "type": "send_command",
+      "device": "STIRRER",
+      "command": "10",
+      "mode": "ascii",
+      "terminator": "none"
+},
+"wait_config": { "type": "iot_response", "device": "STIRRER", "prefer_raw": true },
+      "timeout": 30.0
+    }
+   
+  ]
+}
