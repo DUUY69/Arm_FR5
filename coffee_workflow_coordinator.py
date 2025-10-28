@@ -75,10 +75,13 @@ class CoffeeWorkflowCoordinator:
     
     def connect_iot_device(self, device_name: str, iot_controller):
         """Kết nối thiết bị IoT"""
+        # Lưu với nhiều biến thể tên để tránh lỗi hoa/thường
         self.iot_devices[device_name] = iot_controller
+        self.iot_devices[device_name.upper()] = iot_controller
+        self.iot_devices[device_name.lower()] = iot_controller
         logger.info(f"✅ Đã kết nối thiết bị IoT: {device_name}")
     
-    def check_robot_complete(self, timeout: float = 3.0) -> bool:
+    def check_robot_complete(self, timeout: float = 12.0) -> bool:
         """
         Kiểm tra xem robot có hoàn thành chương trình/motion không (timeout mặc định 3 giây)
         
@@ -90,27 +93,43 @@ class CoffeeWorkflowCoordinator:
             return False
         
         logger.info(f"⏳ Đang kiểm tra robot hoàn thành (timeout: {timeout}s)...")
+        # Detect XML-RPC ServerProxy (mọi thuộc tính đều 'tồn tại')
+        is_xmlrpc_proxy = 'ServerProxy' in type(self.robot).__name__
+        # Pre-detect capability: nếu không có bất kỳ API trạng thái nào callable, fallback chờ
+        has_state_pkg = (not is_xmlrpc_proxy) and hasattr(self.robot, 'robot_state_pkg')
+        has_get_program_state = callable(getattr(self.robot, 'GetProgramState', None))
+        has_check_finish = callable(getattr(self.robot, 'CheckCommandFinish', None))
+        has_motion_state = callable(getattr(self.robot, 'GetRobotMotionState', None))
+        has_alternatives = any(callable(getattr(self.robot, n, None)) for n in ("ProgramState", "GetProgramRunState", "IsProgramRunning"))
+        if not (has_state_pkg or has_get_program_state or has_check_finish or has_motion_state or has_alternatives):
+            logger.info("ℹ️ Không có API trạng thái chương trình trên controller (XML-RPC tối giản). Fallback: chờ timeout rồi coi như hoàn thành.")
+            try:
+                time.sleep(max(0.5, float(timeout)))
+            except Exception:
+                pass
+            return True
         start_time = time.time()
         
         while time.time() - start_time < timeout:
             try:
                 # Method 1: Kiểm tra robot_state_pkg.program_state
-                if hasattr(self.robot, 'robot_state_pkg'):
-                    program_state = self.robot.robot_state_pkg.program_state
-                    logger.info(f"📊 Program State: {program_state}")
-                    
-                    # program_state: 0 = idle, 1 = running, 2 = paused, 3 = error, 4 = finished
-                    if program_state == 0 or program_state == 4:
-                        logger.info("✅ Robot đã hoàn thành! (robot_state_pkg)")
-                        return True
-                    
-                    # Nếu state là 3 (error), báo lỗi
-                    if program_state == 3:
-                        logger.error("❌ Robot gặp lỗi!")
-                        return False
+                if has_state_pkg:
+                    try:
+                        program_state = self.robot.robot_state_pkg.program_state
+                        logger.info(f"📊 Program State: {program_state}")
+                        # program_state: 0 = idle, 1 = running, 2 = paused, 3 = error, 4 = finished
+                        if program_state in (0, 4):
+                            logger.info("✅ Robot đã hoàn thành! (robot_state_pkg)")
+                            return True
+                        if program_state == 3:
+                            logger.error("❌ Robot gặp lỗi!")
+                            return False
+                    except Exception:
+                        # Nếu truy cập không hợp lệ, bỏ qua phương pháp này
+                        pass
                 
                 # Method 2: GetProgramState
-                if hasattr(self.robot, 'GetProgramState'):
+                if has_get_program_state:
                     try:
                         result = self.robot.GetProgramState()
                         if isinstance(result, tuple):
@@ -123,6 +142,24 @@ class CoffeeWorkflowCoordinator:
                             return True
                     except Exception as e:
                         logger.debug(f"GetProgramState error: {e}")
+                # Method 2b: Một số firmware khác tên API
+                for alt_name in ('ProgramState', 'GetProgramRunState', 'IsProgramRunning'):
+                    if callable(getattr(self.robot, alt_name, None)):
+                        try:
+                            val = getattr(self.robot, alt_name)()
+                            # Heuristics: bool False or int 0 => not running => complete
+                            if isinstance(val, tuple):
+                                # (err, state)
+                                err, state = val[0], val[1] if len(val) > 1 else None
+                                if err == 0 and (state in (0, False, None)):
+                                    logger.info(f"✅ Robot đã hoàn thành! ({alt_name})")
+                                    return True
+                            else:
+                                if val in (0, False, None):
+                                    logger.info(f"✅ Robot đã hoàn thành! ({alt_name})")
+                                    return True
+                        except Exception:
+                            pass
                 
                 # Method 3: CheckCommandFinish
                 if hasattr(self.robot, 'CheckCommandFinish'):
@@ -140,7 +177,7 @@ class CoffeeWorkflowCoordinator:
                         logger.debug(f"CheckCommandFinish error: {e}")
                 
                 # Method 4: GetRobotMotionState (nếu có)
-                if hasattr(self.robot, 'GetRobotMotionState'):
+                if has_motion_state:
                     try:
                         result = self.robot.GetRobotMotionState()
                         logger.info(f"📊 Motion State: {result}")
@@ -158,6 +195,10 @@ class CoffeeWorkflowCoordinator:
         
         # Timeout
         logger.warning(f"⚠️ Timeout kiểm tra robot ({timeout}s)")
+        # Nếu là XML-RPC proxy (không có API trạng thái đáng tin), coi như hoàn thành
+        if 'ServerProxy' in type(self.robot).__name__:
+            logger.info("ℹ️ XML-RPC proxy không cung cấp trạng thái tin cậy → coi như hoàn thành")
+            return True
         return False
     
     def check_iot_complete(self, device_name: str, expected_response: bytes = None, 
@@ -173,11 +214,14 @@ class CoffeeWorkflowCoordinator:
         Returns:
             True nếu nhận được response, False nếu timeout
         """
-        if device_name not in self.iot_devices:
+        controller = (
+            self.iot_devices.get(device_name)
+            or self.iot_devices.get(device_name.upper())
+            or self.iot_devices.get(device_name.lower())
+        )
+        if not controller:
             logger.error(f"❌ Thiết bị IoT '{device_name}' chưa được kết nối!")
             return False
-        
-        controller = self.iot_devices[device_name]
         if not controller.is_open():
             logger.error(f"❌ Thiết bị IoT '{device_name}' chưa mở port!")
             return False
@@ -703,9 +747,11 @@ class CoffeeWorkflowCoordinator:
         wait_type = wait_config.get('type', 'default')
         
         if wait_type == 'robot_complete':
-            timeout = wait_config.get('timeout', 3.0)
+            # Run & Wait Completion đã được tích hợp ngay trong action run_lua,
+            # nên phần wait ở đây luôn coi như hoàn thành để tránh đợi trùng lặp.
             def wait(step_info):
-                return self.check_robot_complete(timeout)
+                logger.info("ℹ️ Bỏ qua wait 'robot_complete' vì action đã chờ hoàn thành")
+                return True
             return wait
             
         elif wait_type == 'iot_response':
@@ -753,7 +799,7 @@ class CoffeeWorkflowCoordinator:
             return wait
     
     def _run_lua_action(self, lua_file: str) -> bool:
-        """Chạy Lua file action"""
+        """Chạy Lua file và ĐỢI HOÀN THÀNH (Run & Wait Completion)."""
         if not self.robot_connected:
             logger.error("❌ Robot chưa kết nối!")
             return False
@@ -766,7 +812,15 @@ class CoffeeWorkflowCoordinator:
                 load_result = self.robot.ProgramLoad(remote_path)
                 if int(load_result) == 0:
                     run_result = self.robot.ProgramRun()
-                    return int(run_result) == 0
+                    if int(run_result) != 0:
+                        logger.error(f"ProgramRun failed: {run_result}")
+                        return False
+                    # Run & Wait Completion inside action (default 8s)
+                    logger.info("⏳ Đang đợi robot hoàn thành (Run & Wait Completion)...")
+                    done = self.check_robot_complete(timeout=8.0)
+                    if not done:
+                        logger.warning("⚠️ Timeout đợi robot hoàn thành")
+                    return done
                 else:
                     logger.error(f"ProgramLoad failed: {load_result}")
                     return False
@@ -779,12 +833,16 @@ class CoffeeWorkflowCoordinator:
     
     def _send_iot_command(self, device_name: str, command: str, mode: Optional[str] = None, terminator: Optional[str] = None) -> bool:
         """Gửi lệnh IoT action"""
-        if device_name not in self.iot_devices:
+        controller = (
+            self.iot_devices.get(device_name)
+            or self.iot_devices.get(device_name.upper())
+            or self.iot_devices.get(device_name.lower())
+        )
+        if not controller:
             logger.error(f"❌ Thiết bị '{device_name}' chưa kết nối!")
             return False
         
         try:
-            controller = self.iot_devices[device_name]
             logger.info(f"📤 Gửi lệnh đến {device_name}: {command}")
             
             # Xây dựng payload theo mode/terminator:

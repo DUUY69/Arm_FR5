@@ -11,12 +11,20 @@ from tkinter import ttk, messagebox, filedialog, scrolledtext
 import threading
 import json
 import uuid
+import time
+import xmlrpc.client
+import socket
 
 # Thêm đường dẫn - priority cho current directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 sys.path.insert(1, os.path.join(current_dir, 'IOTController_Python'))
 sys.path.insert(2, os.path.join(current_dir, 'ArmController_Python'))
+# Prefer the same SDK path as Arm Controller GUI
+SDK_PATH = os.path.join(current_dir, 'ArmController_Python', 'fairino_sdk')
+if os.path.exists(SDK_PATH):
+    sys.path.insert(0, SDK_PATH)
+sys.path.insert(3, os.path.join(current_dir, 'ArmController_Python', 'vendor'))
 
 # Import từ current directory đầu tiên (có load_workflow_from_file)
 from coffee_workflow_coordinator import CoffeeWorkflowCoordinator
@@ -26,7 +34,12 @@ try:
     from fairino import Robot
     ROBOT_AVAILABLE = True
 except ImportError:
-    ROBOT_AVAILABLE = False
+    try:
+        from vendor.fairino import Robot
+        ROBOT_AVAILABLE = True
+    except ImportError:
+        Robot = None
+        ROBOT_AVAILABLE = False
 
 from iot_controller import IoTController
 
@@ -85,7 +98,9 @@ class WorkflowGUI:
         if ROBOT_AVAILABLE:
             try:
                 robot_ip = get_robot_ip()
-                robot = Robot.RPC(robot_ip)
+                robot = self._connect_robot_sdk(robot_ip)
+                if robot is None:
+                    raise RuntimeError("Không thể khởi tạo kết nối Robot SDK")
                 self.workflow.connect_robot(robot)
                 self.robot_connected = True
                 self.log(f"✅ Đã kết nối Robot: {robot_ip}")
@@ -140,6 +155,8 @@ class WorkflowGUI:
                   command=self.load_workflow).pack(fill=tk.X, pady=2)
         ttk.Button(workflow_frame, text="💾 Save Workflow As",
                   command=self.save_workflow).pack(fill=tk.X, pady=2)
+        ttk.Button(workflow_frame, text="🤖 Kết Nối Robot",
+                  command=self.connect_robot).pack(fill=tk.X, pady=2)
         
         # Workflow info
         self.workflow_info = ttk.Label(workflow_frame, text="Chưa có workflow")
@@ -195,6 +212,8 @@ class WorkflowGUI:
                 info = f"{self.workflow.workflow_name}\n{len(self.workflow.steps)} bước"
                 self.workflow_info.config(text=info)
                 self.log(f"✅ Đã load workflow: {self.workflow.workflow_name}")
+                # Ensure subsequent auto-saves go to the loaded file
+                self.auto_save_path = file_path
                 self.run_btn.config(state='normal')
             except Exception as e:
                 messagebox.showerror("Error", f"Lỗi load workflow: {e}")
@@ -281,6 +300,20 @@ class WorkflowGUI:
         # Action config
         action_type = tk.StringVar(value="send_command")
         lua_file = tk.StringVar(value="")
+
+        # Load Lua files from ArmController_Python/lua_scripts
+        def list_lua_files():
+            try:
+                scripts_dir = os.path.join(current_dir, 'ArmController_Python', 'lua_scripts')
+                files = []
+                if os.path.isdir(scripts_dir):
+                    for name in os.listdir(scripts_dir):
+                        if name.lower().endswith('.lua'):
+                            files.append(name)
+                return sorted(files)
+            except Exception:
+                return []
+        lua_files = list_lua_files()
         # Build device list from config (if available)
         device_list = []
         try:
@@ -316,19 +349,31 @@ class WorkflowGUI:
         # Action
         ttk.Separator(frm).grid(row=3, column=0, columnspan=2, sticky='ew', pady=8)
         ttk.Label(frm, text="Action type").grid(row=4, column=0, sticky='w')
-        ttk.Combobox(frm, textvariable=action_type, values=["run_lua", "send_command", "delay"], state='readonly').grid(row=4, column=1, sticky='ew')
+        action_combo = ttk.Combobox(frm, textvariable=action_type, values=["run_lua", "send_command", "delay"], state='readonly')
+        action_combo.grid(row=4, column=1, sticky='ew')
 
-        ttk.Label(frm, text="Lua file").grid(row=5, column=0, sticky='w', pady=(6, 0))
-        ttk.Entry(frm, textvariable=lua_file).grid(row=5, column=1, sticky='ew', pady=(6, 0))
+        lua_label = ttk.Label(frm, text="Lua file")
+        lua_label.grid(row=5, column=0, sticky='w', pady=(6, 0))
+        if lua_files:
+            lua_combo = ttk.Combobox(frm, textvariable=lua_file, values=lua_files, state='readonly')
+            lua_combo.grid(row=5, column=1, sticky='ew', pady=(6, 0))
+            if not lua_file.get() and lua_files:
+                lua_file.set(lua_files[0])
+        else:
+            lua_entry = ttk.Entry(frm, textvariable=lua_file)
+            lua_entry.grid(row=5, column=1, sticky='ew', pady=(6, 0))
 
         ttk.Label(frm, text="Device").grid(row=6, column=0, sticky='w', pady=(6, 0))
         if device_list:
-            ttk.Combobox(frm, textvariable=device_name, values=device_list, state='readonly').grid(row=6, column=1, sticky='ew', pady=(6, 0))
+            device_combo = ttk.Combobox(frm, textvariable=device_name, values=device_list, state='readonly')
+            device_combo.grid(row=6, column=1, sticky='ew', pady=(6, 0))
         else:
-            ttk.Entry(frm, textvariable=device_name).grid(row=6, column=1, sticky='ew', pady=(6, 0))
+            device_entry = ttk.Entry(frm, textvariable=device_name)
+            device_entry.grid(row=6, column=1, sticky='ew', pady=(6, 0))
 
         ttk.Label(frm, text="Command").grid(row=7, column=0, sticky='w', pady=(6, 0))
-        ttk.Entry(frm, textvariable=command_var).grid(row=7, column=1, sticky='ew', pady=(6, 0))
+        command_entry = ttk.Entry(frm, textvariable=command_var)
+        command_entry.grid(row=7, column=1, sticky='ew', pady=(6, 0))
 
         ttk.Label(frm, text="Delay (s)").grid(row=8, column=0, sticky='w', pady=(6, 0))
         ttk.Entry(frm, textvariable=delay_var).grid(row=8, column=1, sticky='ew', pady=(6, 0))
@@ -336,19 +381,88 @@ class WorkflowGUI:
         # Wait
         ttk.Separator(frm).grid(row=9, column=0, columnspan=2, sticky='ew', pady=8)
         ttk.Label(frm, text="Wait type").grid(row=10, column=0, sticky='w')
-        ttk.Combobox(frm, textvariable=wait_type, values=["robot_complete", "iot_response", "time_delay", "default"], state='readonly').grid(row=10, column=1, sticky='ew')
+        wait_combo = ttk.Combobox(frm, textvariable=wait_type, values=["robot_complete", "iot_response", "time_delay", "default"], state='readonly')
+        wait_combo.grid(row=10, column=1, sticky='ew')
 
         ttk.Label(frm, text="Wait device").grid(row=11, column=0, sticky='w', pady=(6, 0))
         if device_list:
-            ttk.Combobox(frm, textvariable=wait_device, values=device_list, state='readonly').grid(row=11, column=1, sticky='ew', pady=(6, 0))
+            wait_device_combo = ttk.Combobox(frm, textvariable=wait_device, values=device_list, state='readonly')
+            wait_device_combo.grid(row=11, column=1, sticky='ew', pady=(6, 0))
         else:
-            ttk.Entry(frm, textvariable=wait_device).grid(row=11, column=1, sticky='ew', pady=(6, 0))
+            wait_device_entry = ttk.Entry(frm, textvariable=wait_device)
+            wait_device_entry.grid(row=11, column=1, sticky='ew', pady=(6, 0))
 
         ttk.Label(frm, text="Wait timeout (blank = none)").grid(row=12, column=0, sticky='w', pady=(6, 0))
-        ttk.Entry(frm, textvariable=wait_timeout).grid(row=12, column=1, sticky='ew', pady=(6, 0))
+        wait_timeout_entry = ttk.Entry(frm, textvariable=wait_timeout)
+        wait_timeout_entry.grid(row=12, column=1, sticky='ew', pady=(6, 0))
 
         ttk.Label(frm, text="Wait delay (s)").grid(row=13, column=0, sticky='w', pady=(6, 0))
-        ttk.Entry(frm, textvariable=wait_delay).grid(row=13, column=1, sticky='ew', pady=(6, 0))
+        wait_delay_entry = ttk.Entry(frm, textvariable=wait_delay)
+        wait_delay_entry.grid(row=13, column=1, sticky='ew', pady=(6, 0))
+
+        # Toggle visibility helpers
+        def grid_widgets(*widgets):
+            for w in widgets:
+                if w is not None:
+                    w.grid()
+        def remove_widgets(*widgets):
+            for w in widgets:
+                if w is not None:
+                    w.grid_remove()
+
+        # Determine actual widgets for toggling (depending on availability of combos/entries)
+        lua_widget = None
+        try:
+            lua_widget = locals().get('lua_combo', None) or locals().get('lua_entry', None)
+        except Exception:
+            lua_widget = None
+
+        device_widget = locals().get('device_combo', None) or locals().get('device_entry', None)
+
+        wait_device_widget = locals().get('wait_device_combo', None) or locals().get('wait_device_entry', None)
+
+        def refresh_visibility(*_):
+            stype = step_type.get()
+            atype = action_type.get()
+
+            robot_mode = (stype == 'robot') or (atype == 'run_lua')
+
+            # If robot mode: show Lua, hide IoT device/command and iot wait device
+            if robot_mode:
+                # Defaults for robot
+                action_type.set('run_lua')
+                wait_type.set('robot_complete')
+                if lua_label: lua_label.grid()
+                if lua_widget: lua_widget.grid()
+                remove_widgets(device_widget, command_entry, wait_device_widget)
+            else:
+                # IoT mode
+                action_type.set('send_command')
+                if lua_label: lua_label.grid_remove()
+                if lua_widget: lua_widget.grid_remove()
+                grid_widgets(device_widget, command_entry, wait_device_widget)
+
+            # Wait field visibility: only show wait_device when wait_type is iot_response
+            if wait_type.get() == 'iot_response':
+                if wait_device_widget: wait_device_widget.grid()
+            else:
+                if wait_device_widget: wait_device_widget.grid_remove()
+
+        # Bind changes
+        step_type_combo = None
+        for child in frm.grid_slaves():
+            # find the combobox at row=1, column=1 (step_type)
+            info = child.grid_info()
+            if int(info.get('row', -1)) == 1 and int(info.get('column', -1)) == 1 and isinstance(child, ttk.Combobox):
+                step_type_combo = child
+                break
+        if step_type_combo:
+            step_type_combo.bind('<<ComboboxSelected>>', refresh_visibility)
+        action_combo.bind('<<ComboboxSelected>>', refresh_visibility)
+        wait_combo.bind('<<ComboboxSelected>>', refresh_visibility)
+
+        # Initialize visibility based on defaults
+        refresh_visibility()
 
         frm.columnconfigure(1, weight=1)
 
@@ -357,17 +471,32 @@ class WorkflowGUI:
                 step_id = str(uuid.uuid4())
                 # action_config
                 if action_type.get() == 'run_lua':
+                    if not lua_file.get().strip():
+                        messagebox.showerror("Error", "Vui lòng chọn Lua file")
+                        return
                     action_config = {'type': 'run_lua', 'file': lua_file.get().strip()}
                 elif action_type.get() == 'send_command':
-                    action_config = {'type': 'send_command', 'device': device_name.get().strip(), 'command': command_var.get().strip()}
+                    # Bao gồm đầy đủ trường theo chuẩn mong muốn
+                    action_config = {
+                        'type': 'send_command',
+                        'device': device_name.get().strip(),
+                        'command': command_var.get().strip(),
+                        'mode': 'ascii',
+                        'terminator': 'none'
+                    }
                 else:
                     action_config = {'type': 'delay', 'delay': float(delay_var.get() or '1.0')}
 
                 # wait_config
                 if wait_type.get() == 'robot_complete':
-                    wc = {'type': 'robot_complete', 'timeout': float(timeout_var.get() or '3.0')}
+                    wc = {'type': 'robot_complete', 'timeout': float(timeout_var.get() or '8.0')}
                 elif wait_type.get() == 'iot_response':
-                    wc = {'type': 'iot_response', 'device': wait_device.get().strip()}
+                    # Bao gồm prefer_raw và timeout nếu có
+                    wc = {
+                        'type': 'iot_response',
+                        'device': wait_device.get().strip(),
+                        'prefer_raw': True
+                    }
                     if wait_timeout.get().strip() != '':
                         wc['timeout'] = float(wait_timeout.get())
                 elif wait_type.get() == 'time_delay':
@@ -403,8 +532,10 @@ class WorkflowGUI:
             return
         
         try:
-            robot_ip = "192.168.58.2"
-            robot = Robot.RPC(robot_ip)
+            robot_ip = get_robot_ip()
+            robot = self._connect_robot_sdk(robot_ip)
+            if robot is None:
+                raise RuntimeError("Không thể khởi tạo kết nối Robot SDK")
             self.workflow.connect_robot(robot)
             self.robot_connected = True
             self.log(f"✅ Đã kết nối Robot: {robot_ip}")
@@ -479,6 +610,83 @@ class WorkflowGUI:
         
         self.log("⏸️ Đang dừng workflow...")
         # TODO: Implement stop mechanism
+
+    # ==================== Robot connection helpers ====================
+    def _connect_robot_sdk(self, robot_ip: str):
+        """Kết nối SDK Robot.RPC với health check đơn giản.
+        Trả về robot instance nếu OK, None nếu lỗi.
+        """
+        try:
+            robot = Robot.RPC(robot_ip)
+        except AttributeError:
+            try:
+                from vendor.fairino import Robot as VendorRobot
+                self.log("⚠️ Lỗi SDK hiện tại, thử vendor.fairino.Robot")
+                robot = VendorRobot.RPC(robot_ip)
+            except Exception as e:
+                self.log(f"❌ Vendor SDK lỗi: {e}")
+                robot = None
+        except Exception as e:
+            self.log(f"❌ RPC lỗi: {e}")
+            robot = None
+
+        # Nếu SDK đều lỗi, fallback XML-RPC thuần
+        if robot is None:
+            # XML-RPC fallback: try multiple paths and brief timeout
+            paths = ["/RPC2", "/RPC", "/"]
+            ports = [20003]
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(2.0)
+            try:
+                for p in ports:
+                    for path in paths:
+                        url = f"http://{robot_ip}:{p}{path}"
+                        try:
+                            self.log(f"ℹ️ Fallback XML-RPC thử {url}")
+                            proxy = xmlrpc.client.ServerProxy(url)
+                            # Health check quick call
+                            try:
+                                _ = proxy.GetControllerIP()
+                            except Exception:
+                                _ = proxy.GetLuaList()
+                            return proxy
+                        except Exception as e:
+                            self.log(f"⚠️ XML-RPC không phản hồi tại {url}: {e}")
+                            continue
+                # As a hint, probe TCP 20010 (data upload) to give user feedback
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(1.5)
+                    s.connect((robot_ip, 20010))
+                    s.close()
+                except Exception as e:
+                    self.log(f"ℹ️ TCP 20010 không mở: {e}")
+                return None
+            finally:
+                socket.setdefaulttimeout(old_timeout)
+
+        # Health check: ưu tiên GetSDKVersion / GetControllerIP cho SDK
+        try:
+            if hasattr(robot, 'GetSDKVersion'):
+                _ = robot.GetSDKVersion()
+            elif hasattr(robot, 'GetControllerIP'):
+                _ = robot.GetControllerIP()
+        except Exception as e:
+            self.log(f"⚠️ Health check cảnh báo: {e}")
+
+        # Thử chuyển sang Auto mode (không fail nếu lỗi)
+        try:
+            if hasattr(robot, 'GetRobotMode'):
+                mode = robot.GetRobotMode()
+                mode_val = mode[1] if isinstance(mode, tuple) and len(mode) > 1 else (mode[0] if isinstance(mode, tuple) else mode)
+                if mode_val != 0 and hasattr(robot, 'Mode'):
+                    robot.Mode(0)
+            elif hasattr(robot, 'Mode'):
+                robot.Mode(0)
+        except Exception:
+            pass
+
+        return robot
 
 
 def main():

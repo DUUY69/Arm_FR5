@@ -1,0 +1,57 @@
+{
+  "workflow_id": "stirrer-workflow-v1",
+  "workflow_name": "New Workflow Arm",
+  "workflow_version": "1.0",
+  "workflow_description": "",
+  "created_at": 1761644525.6719532,
+  "steps": [
+    {
+      "id": "e591d089-10f4-42b4-a438-c510d2cb8633",
+      "name": "New Step",
+      "type": "robot",
+      "action_config": {
+        "type": "run_lua",
+        "file": "MoveToMotor.lua"
+      },
+      "wait_config": {
+        "type": "robot_complete",
+        "timeout": 8.0
+      },
+      "timeout": 30.0,
+      "created_at": 1761643993.5082686
+    },
+    {
+      "id": "b61450e3-1873-49d5-bb0a-7cef65273452",
+      "name": "New Step",
+      "type": "iot",
+      "action_config": {
+        "type": "send_command",
+        "device": "STIRRER",
+        "command": "10",
+        "mode": "ascii",
+        "terminator": "none"
+      },
+      "wait_config": {
+        "type": "time_delay",
+        "delay": 10.0
+      },
+      "timeout": 30.0,
+      "created_at": 1761643993.5082686
+    },
+    {
+      "id": "a2572011-c9f3-4ede-8857-d19e863bb02a",
+      "name": "New Step",
+      "type": "robot",
+      "action_config": {
+        "type": "run_lua",
+        "file": "OutMotor.lua"
+      },
+      "wait_config": {
+        "type": "robot_complete",
+        "timeout": 8.0
+      },
+      "timeout": 30.0,
+      "created_at": 1761644525.669953
+    }
+  ]
+}
